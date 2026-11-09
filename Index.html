@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Joyeux anniversaire Jules</title>
+<style>
+html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:16px;box-sizing:border-box;z-index:2;pointer-events:none}
+h2{font-weight:300;letter-spacing:.2em;text-transform:uppercase;font-size:clamp(.8rem,3vw,1.2rem);color:#aaa;margin:0 0 28px}
+.cd{display:flex;gap:clamp(10px,3vw,28px)}
+.cd div{min-width:clamp(58px,17vw,120px)}
+.cd b{display:block;font-size:clamp(2.2rem,11vw,5.5rem);font-weight:200;font-variant-numeric:tabular-nums}
+.cd span{font-size:clamp(.6rem,2.4vw,.9rem);letter-spacing:.2em;text-transform:uppercase;color:#777}
+#title{display:none;font-size:clamp(2.2rem,10vw,6rem);font-weight:800;line-height:1.1;margin:0;
+background:linear-gradient(90deg,#ffd35a,#ff5f8f,#7ad7ff,#ffd35a);background-size:300% 100%;
+-webkit-background-clip:text;background-clip:text;color:transparent;animation:glow 4s linear infinite;
+filter:drop-shadow(0 0 18px rgba(255,180,100,.45))}
+@keyframes glow{to{background-position:300% 0}}
+#hint{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center;color:#666;font-size:.85rem;z-index:3;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="wrap">
+  <div id="wait">
+    <h2>Joyeux anniversaire Jules dans</h2>
+    <div class="cd">
+      <div><b id="d">0</b><span>jours</span></div>
+      <div><b id="h">00</b><span>heures</span></div>
+      <div><b id="m">00</b><span>min</span></div>
+      <div><b id="s">00</b><span>sec</span></div>
+    </div>
+  </div>
+  <h1 id="title">Joyeux anniversaire Jules</h1>
+</div>
+<div id="hint">Touchez l’écran pour activer le son</div>
+<script>
+// Date cible : 12 novembre 2026 à 00:00 (heure de l'appareil)
+var TARGET = new Date(2026, 10, 12, 0, 0, 0).getTime();
+var c = document.getElementById('c'), x = c.getContext('2d'), W, H;
+function size(){ W = c.width = innerWidth; H = c.height = innerHeight; }
+addEventListener('resize', size); size();
+
+var started = false, rockets = [], parts = [], lastS = -1;
+function $(id){ return document.getElementById(id); }
+function p2(n){ return String(n).padStart(2, '0'); }
+
+/* ---------- SON ----------
+   Si des vrais enregistrements sont présents dans le dossier "sons/" (lancement.mp3,
+   explosion.mp3, tick.mp3, bip.mp3), ils sont utilisés. Sinon : sons synthétisés. */
+var AC = null, soundOn = false, noiseBuf, files = {};
+function initAudio(){
+  if (!AC){
+    var A = window.AudioContext || window.webkitAudioContext;
+    if (!A) return;
+    AC = new A();
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 3, AC.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    ['lancement', 'explosion', 'tick', 'bip'].forEach(function(n){
+      fetch('sons/' + n + '.mp3').then(function(r){ if (!r.ok) throw 0; return r.arrayBuffer(); })
+        .then(function(b){ return AC.decodeAudioData(b); })
+        .then(function(buf){ files[n] = buf; })
+        .catch(function(){});
+    });
+  }
+  AC.resume().then(function(){
+    soundOn = AC.state === 'running';
+    if (soundOn) $('hint').style.display = 'none';
+  }).catch(function(){});
+}
+function play(n, vol, rate){
+  var s = AC.createBufferSource(), g = AC.createGain();
+  s.buffer = files[n]; s.playbackRate.value = rate || 1; g.gain.value = vol;
+  s.connect(g); g.connect(AC.destination); s.start();
+}
+function tone(f0, dur, vol, type, when, f1){
+  var t = AC.currentTime + (when || 0), o = AC.createOscillator(), g = AC.createGain();
+  o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t);
+  if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur);
+}
+function noise(dur, type, f0, f1, vol, when){
+  var t = AC.currentTime + (when || 0), s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = noiseBuf; s.playbackRate.value = .8 + Math.random() * .4;
+  f.type = type; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  s.connect(f); f.connect(g); g.connect(AC.destination); s.start(t, Math.random()); s.stop(t + dur);
+}
+function sfxLaunch(){
+  if (!soundOn) return;
+  if (files.lancement) return play('lancement', .6, .9 + Math.random() * .2);
+  tone(500, .8, .07, 'sine', 0, 2400);
+  noise(.8, 'bandpass', 600, 3000, .12);
+}
+function sfxBoom(){
+  if (!soundOn) return;
+  if (files.explosion) return play('explosion', .9, .85 + Math.random() * .3);
+  tone(110, .9, .8, 'sine', 0, 35);
+  noise(1.4, 'lowpass', 1200, 50, .8);
+  for (var i = 0; i < 10; i++) noise(.06, 'highpass', 3500, 6000, .15, .08 + Math.random() * .9);
+}
+function sfxTick(n){
+  if (!soundOn) return;
+  var big = n <= 10, k = big ? 'bip' : 'tick';
+  if (files[k]) return play(k, big ? .7 : .4, big && n <= 3 ? 1.3 : 1);
+  if (big) tone(n <= 3 ? 1000 : 700, .2, .18, 'square');
+  else tone(1600, .04, .06, 'square');
+}
+
+/* ---------- COMPTE À REBOURS ---------- */
+function tick(){
+  if (started) return;
+  var t = TARGET - Date.now();
+  if (t <= 0){ start(); return; }
+  var s = Math.ceil(t / 1000);
+  $('d').textContent = Math.floor(s / 86400);
+  $('h').textContent = p2(Math.floor(s % 86400 / 3600));
+  $('m').textContent = p2(Math.floor(s % 3600 / 60));
+  $('s').textContent = p2(s % 60);
+  if (s !== lastS){ lastS = s; sfxTick(s); }
+}
+setInterval(tick, 100); tick();
+
+/* ---------- FEUX D'ARTIFICE ---------- */
+function start(){
+  if (started) return;
+  started = true;
+  $('wait').style.display = 'none';
+  $('title').style.display = 'block';
+  $('hint').style.display = 'none';
+  for (var i = 0; i < 4; i++) setTimeout(launch, i * 250);
+  loop();
+}
+function launch(){
+  sfxLaunch();
+  rockets.push({x: W * (.15 + Math.random() * .7), y: H, vy: -(H / 55 + Math.random() * 3), ty: H * (.12 + Math.random() * .35), hue: Math.random() * 360});
+}
+function boom(r){
+  sfxBoom();
+  var n = 90 + Math.floor(Math.random() * 50);
+  for (var i = 0; i < n; i++){
+    var a = Math.PI * 2 * i / n, v = 1.5 + Math.random() * 4.5;
+    parts.push({x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, hue: r.hue + Math.random() * 40});
+  }
+}
+function loop(){
+  x.globalCompositeOperation = 'source-over';
+  x.fillStyle = 'rgba(0,0,0,.2)';
+  x.fillRect(0, 0, W, H);
+  x.globalCompositeOperation = 'lighter';
+  if (Math.random() < .06) launch();
+  rockets = rockets.filter(function(r){
+    r.y += r.vy; r.vy *= .985;
+    x.fillStyle = 'hsl(' + r.hue + ',100%,75%)';
+    x.fillRect(r.x, r.y, 3, 3);
+    if (r.y <= r.ty || r.vy > -2){ boom(r); return false; }
+    return true;
+  });
+  parts = parts.filter(function(p){
+    p.x += p.vx; p.y += p.vy; p.vx *= .98; p.vy = p.vy * .98 + .06; p.life -= .012;
+    x.fillStyle = 'hsla(' + p.hue + ',100%,60%,' + Math.max(p.life, 0) + ')';
+    x.beginPath(); x.arc(p.x, p.y, 2, 0, 6.283); x.fill();
+    return p.life > 0;
+  });
+  requestAnimationFrame(loop);
+}
+addEventListener('pointerdown', function(e){
+  if (!started) return;
+  sfxLaunch();
+  rockets.push({x: e.clientX, y: H, vy: -(H / 50), ty: e.clientY, hue: Math.random() * 360});
+});
+
+/* ---------- ACTIVATION DU SON ---------- */
+initAudio();
+['pointerdown', 'keydown', 'touchstart'].forEach(function(ev){ addEventListener(ev, initAudio); });
+</script>
+</body>
+</html>
