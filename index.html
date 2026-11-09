@@ -18,11 +18,13 @@ background:linear-gradient(90deg,#ffd35a,#ff5f8f,#7ad7ff,#ffd35a);background-siz
 -webkit-background-clip:text;background-clip:text;color:transparent;animation:glow 4s linear infinite;
 filter:drop-shadow(0 0 18px rgba(255,180,100,.45))}
 @keyframes glow{to{background-position:300% 0}}
+#fl{position:fixed;inset:0;background:#fff;opacity:0;transition:opacity .15s;pointer-events:none;z-index:1}
 #hint{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center;color:#666;font-size:.85rem;z-index:3;pointer-events:none}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="fl"></div>
 <div class="wrap">
   <div id="wait">
     <h2>Joyeux anniversaire Jules dans</h2>
@@ -121,7 +123,7 @@ function tick(){
   $('h').textContent = p2(Math.floor(s % 86400 / 3600));
   $('m').textContent = p2(Math.floor(s % 3600 / 60));
   $('s').textContent = p2(s % 60);
-  if (s !== lastS){ lastS = s; sfxTick(s); }
+  if (s !== lastS){ lastS = s; sfxTick(s); if (s <= 10 && navigator.vibrate) navigator.vibrate(s <= 3 ? 200 : 80); }
 }
 setInterval(tick, 100); tick();
 
@@ -131,6 +133,7 @@ function start(){
   started = true;
   $('wait').style.display = 'none';
   $('title').style.display = 'block';
+  if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 600]);
   $('hint').style.display = 'none';
   for (var i = 0; i < 4; i++) setTimeout(launch, i * 250);
   loop();
@@ -140,7 +143,7 @@ function launch(){
   rockets.push({x: W * (.15 + Math.random() * .7), y: H, vy: -(H / 55 + Math.random() * 3), ty: H * (.12 + Math.random() * .35), hue: Math.random() * 360});
 }
 function boom(r){
-  sfxBoom();
+  sfxBoom(); flash();
   var n = 90 + Math.floor(Math.random() * 50);
   for (var i = 0; i < n; i++){
     var a = Math.PI * 2 * i / n, v = 1.5 + Math.random() * 4.5;
@@ -174,9 +177,31 @@ addEventListener('pointerdown', function(e){
   rockets.push({x: e.clientX, y: H, vy: -(H / 50), ty: e.clientY, hue: Math.random() * 360});
 });
 
+/* ---------- FLASH / VIBRATION ---------- */
+// Lampe torche : Android + Chrome uniquement (permission caméra demandée au 1er toucher). Flash d'écran sur tous les téléphones.
+var torch = null, torchAsked = false;
+function initTorch(){
+  if (torchAsked) return;
+  torchAsked = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}}).then(function(st){
+    var tr = st.getVideoTracks()[0], cap = tr.getCapabilities ? tr.getCapabilities() : {};
+    if (cap.torch) torch = tr; else tr.stop();
+  }).catch(function(){});
+}
+function flash(){
+  var f = $('fl'); f.style.opacity = .35; setTimeout(function(){ f.style.opacity = 0; }, 70);
+  if (torch){
+    torch.applyConstraints({advanced: [{torch: true}]}).catch(function(){});
+    setTimeout(function(){ torch.applyConstraints({advanced: [{torch: false}]}).catch(function(){}); }, 90);
+  }
+  if (navigator.vibrate) navigator.vibrate([60, 40, 100]);
+}
+
 /* ---------- ACTIVATION DU SON ---------- */
+function unlock(){ initAudio(); initTorch(); }
 initAudio();
-['pointerdown', 'keydown', 'touchstart'].forEach(function(ev){ addEventListener(ev, initAudio); });
+['pointerdown', 'keydown', 'touchstart'].forEach(function(ev){ addEventListener(ev, unlock); });
 </script>
 </body>
 </html>
